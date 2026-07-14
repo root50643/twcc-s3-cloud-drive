@@ -9,7 +9,13 @@ import {
   Search
 } from "lucide-react";
 import { createDownloadUrl, listObjects, logout } from "./api";
-import { buildBreadcrumb, folderNameFromPrefix, formatBytes, formatDate } from "./format";
+import {
+  buildBreadcrumb,
+  folderNameFromPrefix,
+  formatBytes,
+  formatDate,
+  sortByLastModifiedDesc
+} from "./format";
 import type { FileItem, FolderItem, ObjectListResponse, User } from "./types";
 
 interface DriveViewProps {
@@ -69,7 +75,10 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
     () => filterByName(data?.folders ?? [], query),
     [data?.folders, query]
   );
-  const filteredFiles = useMemo(() => filterByName(data?.files ?? [], query), [data?.files, query]);
+  const filteredFiles = useMemo(
+    () => sortByLastModifiedDesc(filterByName(data?.files ?? [], query)),
+    [data?.files, query]
+  );
 
   async function handleLogout() {
     await logout();

@@ -24,6 +24,26 @@ export function formatDate(value: string | null): string {
   }).format(new Date(value));
 }
 
+export function sortByLastModifiedDesc<T extends { name: string; lastModified: string | null }>(
+  items: T[]
+): T[] {
+  return [...items].sort((left, right) => {
+    const timeDifference = modifiedTimestamp(right.lastModified) - modifiedTimestamp(left.lastModified);
+    if (timeDifference !== 0) {
+      return timeDifference;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function modifiedTimestamp(value: string | null): number {
+  if (!value) {
+    return Number.MIN_SAFE_INTEGER;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? Number.MIN_SAFE_INTEGER : timestamp;
+}
+
 export function folderNameFromPrefix(prefix: string): string {
   const trimmed = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
   return trimmed.split("/").filter(Boolean).pop() ?? "Root";

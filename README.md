@@ -2,10 +2,15 @@
 
 前後端分離的 S3-compatible 檔案瀏覽與下載系統。前端只呼叫 REST API；後端負責登入、讀取固定 bucket、產生短效下載連結。Access Key、Secret Key、bucket 設定都只存在部署主機的 `.env`，不會提交到 GitHub，也不會回傳給使用者。
 
+## Interface Preview
+
+![TWCC S3 Cloud Drive 登入畫面](docs/images/login-screen.png)
+
 ## Features
 
 - 多組帳號登入，密碼以 bcrypt hash 存在 `users.json`
 - 類似雲端硬碟的資料夾瀏覽、breadcrumb、搜尋、檔案大小與修改時間
+- 檔案預設依修改時間由新到舊排序
 - 單檔下載，後端產生短效 presigned URL
 - Docker Compose 部署，`frontend` 對外服務，`backend` 只在 compose 內部網路
 - 支援 TWCC COS 或其他 S3-compatible endpoint
