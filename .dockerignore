@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+.env
+.env.*
+users.json
+.git
+.agents
+.codex
+*.log

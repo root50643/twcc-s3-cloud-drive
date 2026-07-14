@@ -1,0 +1,8 @@
+{
+  "users": [
+    {
+      "username": "alice",
+      "passwordHash": "$2b$10$replace.with.hash.generated.by.user.add"
+    }
+  ]
+}
