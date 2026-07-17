@@ -11,6 +11,7 @@ import type { ObjectListResult, StorageClient } from "../types.js";
 class MockStorage implements StorageClient {
   listError: Error | null = null;
   downloadError: Error | null = null;
+  downloadKeys: string[] = [];
 
   async listObjects(): Promise<ObjectListResult> {
     if (this.listError) {
@@ -31,11 +32,15 @@ class MockStorage implements StorageClient {
     };
   }
 
-  async createDownloadUrl(): Promise<string> {
+  async createDownloadUrl(input: { key: string; expiresInSeconds: number }): Promise<string> {
     if (this.downloadError) {
       throw this.downloadError;
     }
-    return "https://storage.example.test/bucket/readme.txt?signature=short";
+    if (input.key.split("/").some((segment) => segment === "." || segment === "..")) {
+      throw new Error("INVALID_SCOPED_PATH");
+    }
+    this.downloadKeys.push(input.key);
+    return `https://storage.example.test/bucket/${encodeURIComponent(input.key)}?signature=short`;
   }
 }
 
@@ -127,6 +132,76 @@ describe("backend API", () => {
     expect(response.status).toBe(200);
     expect(response.body.url).toContain("signature=short");
     expect(response.body.expiresInSeconds).toBe(300);
+  });
+
+  it("rejects batch downloads before login", async () => {
+    const app = await testApp();
+    const response = await request(app)
+      .post("/api/v1/download-urls/batch")
+      .send({ keys: ["one.txt", "two.txt"] });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("creates ordered batch URLs and removes duplicate normalized keys", async () => {
+    const app = await testApp();
+    const agent = request.agent(app);
+    await agent.post("/api/v1/auth/login").send({ username: "alice", password: "password-one" });
+
+    const response = await agent
+      .post("/api/v1/download-urls/batch")
+      .send({ keys: ["new.txt", "/old.txt", "new.txt"] });
+
+    expect(response.status).toBe(200);
+    expect(response.body.downloads.map((download: { key: string }) => download.key)).toEqual([
+      "new.txt",
+      "old.txt"
+    ]);
+    expect(response.body.expiresInSeconds).toBe(300);
+    expect(storage.downloadKeys).toEqual(["new.txt", "old.txt"]);
+  });
+
+  it("rejects empty and oversized batch download requests", async () => {
+    const app = await testApp();
+    const agent = request.agent(app);
+    await agent.post("/api/v1/auth/login").send({ username: "alice", password: "password-one" });
+
+    expect((await agent.post("/api/v1/download-urls/batch").send({ keys: [] })).status).toBe(400);
+    expect(
+      (
+        await agent
+          .post("/api/v1/download-urls/batch")
+          .send({ keys: Array.from({ length: 21 }, (_, index) => `file-${index}.txt`) })
+      ).status
+    ).toBe(400);
+  });
+
+  it("rejects traversal-like paths in a batch", async () => {
+    const app = await testApp();
+    const agent = request.agent(app);
+    await agent.post("/api/v1/auth/login").send({ username: "alice", password: "password-one" });
+
+    const response = await agent
+      .post("/api/v1/download-urls/batch")
+      .send({ keys: ["safe.txt", "../private.txt"] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("INVALID_OBJECT_PATH");
+  });
+
+  it("does not leak storage errors from batch URL creation", async () => {
+    const app = await testApp();
+    const agent = request.agent(app);
+    await agent.post("/api/v1/auth/login").send({ username: "alice", password: "password-one" });
+    storage.downloadError = new Error("S3_DOWNLOAD_URL_FAILED");
+
+    const response = await agent
+      .post("/api/v1/download-urls/batch")
+      .send({ keys: ["safe.txt"] });
+
+    expect(response.status).toBe(502);
+    expect(JSON.stringify(response.body)).not.toContain("AKIASECRET");
+    expect(JSON.stringify(response.body)).not.toContain("SECRET_ACCESS_KEY");
   });
 
   it("does not leak secret-like text from storage errors", async () => {

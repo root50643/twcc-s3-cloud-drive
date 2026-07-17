@@ -1,4 +1,9 @@
-import type { ApiErrorBody, ObjectListResponse, User } from "./types";
+import type {
+  ApiErrorBody,
+  BatchDownloadResponse,
+  ObjectListResponse,
+  User
+} from "./types";
 
 class ApiError extends Error {
   constructor(
@@ -90,4 +95,16 @@ export async function createDownloadUrl(key: string): Promise<string> {
   });
   const body = await parseResponse<{ url: string }>(response);
   return body.url;
+}
+
+export async function createBatchDownloadUrls(keys: string[]): Promise<BatchDownloadResponse> {
+  const response = await fetch("/api/v1/download-urls/batch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({ keys })
+  });
+  return parseResponse<BatchDownloadResponse>(response);
 }

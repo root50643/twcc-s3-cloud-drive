@@ -21,6 +21,16 @@ export interface ObjectListResponse {
   nextContinuationToken: string | null;
 }
 
+export interface BatchDownloadItem {
+  key: string;
+  url: string;
+}
+
+export interface BatchDownloadResponse {
+  downloads: BatchDownloadItem[];
+  expiresInSeconds: number;
+}
+
 export interface ApiErrorBody {
   error?: {
     code: string;

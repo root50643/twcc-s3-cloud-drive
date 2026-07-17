@@ -11,7 +11,7 @@
 - 多組帳號登入，密碼以 bcrypt hash 存在 `users.json`
 - 類似雲端硬碟的資料夾瀏覽、breadcrumb、搜尋、檔案大小與修改時間
 - 檔案預設依修改時間由新到舊排序
-- 單檔下載，後端產生短效 presigned URL
+- 單檔下載與批量下載最多 20 個檔案，後端產生短效 presigned URL
 - Docker Compose 部署，`frontend` 對外服務，`backend` 只在 compose 內部網路
 - 支援 TWCC COS 或其他 S3-compatible endpoint
 
@@ -119,6 +119,7 @@ POST /api/v1/auth/logout
 GET  /api/v1/auth/me
 GET  /api/v1/objects?prefix=&continuationToken=
 POST /api/v1/download-urls
+POST /api/v1/download-urls/batch
 ```
 
 下載 API body：
@@ -139,6 +140,28 @@ POST /api/v1/download-urls
 ```
 
 使用者可能看見 S3 endpoint、bucket、object key 與短效簽名參數，但不會看見 Access Key 或 Secret Key。
+
+批量下載 API body：
+
+```json
+{
+  "keys": ["folder/file-a.pdf", "folder/file-b.pdf"]
+}
+```
+
+回傳：
+
+```json
+{
+  "downloads": [
+    { "key": "folder/file-a.pdf", "url": "https://..." },
+    { "key": "folder/file-b.pdf", "url": "https://..." }
+  ],
+  "expiresInSeconds": 300
+}
+```
+
+批量下載一次最多 20 個目前資料夾內的檔案，瀏覽器可能會詢問是否允許網站下載多個檔案。
 
 ## Local Development
 

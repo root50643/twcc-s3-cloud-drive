@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   Download,
@@ -6,9 +6,11 @@ import {
   Folder,
   LogOut,
   RefreshCw,
-  Search
+  Search,
+  X
 } from "lucide-react";
-import { createDownloadUrl, listObjects, logout } from "./api";
+import { createBatchDownloadUrls, createDownloadUrl, listObjects, logout } from "./api";
+import { triggerBrowserDownloads } from "./downloads";
 import {
   buildBreadcrumb,
   folderNameFromPrefix,
@@ -23,6 +25,8 @@ interface DriveViewProps {
   onLogout(): void;
 }
 
+export const MAX_BATCH_DOWNLOAD_FILES = 20;
+
 export function DriveView({ user, onLogout }: DriveViewProps) {
   const [prefix, setPrefix] = useState("");
   const [query, setQuery] = useState("");
@@ -30,7 +34,10 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [batchDownloading, setBatchDownloading] = useState(false);
 
   const crumbs = useMemo(() => buildBreadcrumb(prefix), [prefix]);
 
@@ -68,6 +75,8 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
   useEffect(() => {
     setData(null);
     setQuery("");
+    setSelectedKeys(new Set());
+    setStatus("");
     void loadCurrentFolder();
   }, [loadCurrentFolder]);
 
@@ -79,6 +88,13 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
     () => sortByLastModifiedDesc(filterByName(data?.files ?? [], query)),
     [data?.files, query]
   );
+  const displayedKeys = useMemo(() => filteredFiles.map((file) => file.key), [filteredFiles]);
+  const selectedDisplayedCount = useMemo(
+    () => displayedKeys.filter((key) => selectedKeys.has(key)).length,
+    [displayedKeys, selectedKeys]
+  );
+  const allDisplayedSelected =
+    displayedKeys.length > 0 && selectedDisplayedCount === displayedKeys.length;
 
   async function handleLogout() {
     await logout();
@@ -95,6 +111,90 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
       setError(requestError instanceof Error ? requestError.message : "Unable to download file.");
     } finally {
       setDownloadingKey(null);
+    }
+  }
+
+  function toggleFileSelection(key: string) {
+    setStatus("");
+    setError("");
+    if (selectedKeys.has(key)) {
+      setSelectedKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      return;
+    }
+
+    if (selectedKeys.size >= MAX_BATCH_DOWNLOAD_FILES) {
+      setError(`一次最多可下載 ${MAX_BATCH_DOWNLOAD_FILES} 個檔案。`);
+      return;
+    }
+
+    setSelectedKeys((current) => new Set(current).add(key));
+  }
+
+  function toggleDisplayedFiles() {
+    setStatus("");
+    if (
+      allDisplayedSelected ||
+      (selectedKeys.size >= MAX_BATCH_DOWNLOAD_FILES && selectedDisplayedCount > 0)
+    ) {
+      setSelectedKeys((current) => {
+        const next = new Set(current);
+        displayedKeys.forEach((key) => next.delete(key));
+        return next;
+      });
+      setError("");
+      return;
+    }
+
+    const next = new Set(selectedKeys);
+    for (const key of displayedKeys) {
+      if (next.size >= MAX_BATCH_DOWNLOAD_FILES) {
+        break;
+      }
+      next.add(key);
+    }
+    setSelectedKeys(next);
+    setError(
+      displayedKeys.some((key) => !next.has(key))
+        ? `已選取前 ${MAX_BATCH_DOWNLOAD_FILES} 個檔案。`
+        : ""
+    );
+  }
+
+  function clearSelection() {
+    setSelectedKeys(new Set());
+    setError("");
+    setStatus("");
+  }
+
+  function refreshCurrentFolder() {
+    clearSelection();
+    void loadCurrentFolder();
+  }
+
+  async function handleBatchDownload() {
+    const selectedInDisplayOrder = sortByLastModifiedDesc(data?.files ?? [])
+      .filter((file) => selectedKeys.has(file.key))
+      .map((file) => file.key);
+    if (selectedInDisplayOrder.length === 0) {
+      return;
+    }
+
+    setBatchDownloading(true);
+    setError("");
+    setStatus("");
+    try {
+      const result = await createBatchDownloadUrls(selectedInDisplayOrder);
+      await triggerBrowserDownloads(result.downloads);
+      setSelectedKeys(new Set());
+      setStatus(`已送出 ${result.downloads.length} 個檔案下載。`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to download files.");
+    } finally {
+      setBatchDownloading(false);
     }
   }
 
@@ -124,6 +224,7 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
               key={crumb.prefix}
               type="button"
               onClick={() => setPrefix(crumb.prefix)}
+              disabled={batchDownloading}
               className={index === crumbs.length - 1 ? "active-crumb" : ""}
               aria-current={index === crumbs.length - 1 ? "page" : undefined}
             >
@@ -145,7 +246,8 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
           <button
             className="icon-button"
             type="button"
-            onClick={() => void loadCurrentFolder()}
+            onClick={refreshCurrentFolder}
+            disabled={batchDownloading}
             title="重新整理"
             aria-label="重新整理"
           >
@@ -155,21 +257,66 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
       </section>
 
       {error ? <div className="status-error">{error}</div> : null}
+      {status ? (
+        <div className="status-success" role="status">
+          {status}
+        </div>
+      ) : null}
 
       <section className="drive-surface" aria-label={folderNameFromPrefix(prefix)}>
         {prefix ? (
-          <button className="up-row" type="button" onClick={() => setPrefix(normalizedParentPrefix)}>
+          <button
+            className="up-row"
+            type="button"
+            onClick={() => setPrefix(normalizedParentPrefix)}
+            disabled={batchDownloading}
+          >
             <ChevronLeft size={18} aria-hidden="true" />
             上一層
           </button>
         ) : null}
 
+        {selectedKeys.size > 0 ? (
+          <div className="batch-toolbar" aria-label="批量下載工具">
+            <span>已選取 {selectedKeys.size} 個檔案</span>
+            <div className="batch-actions">
+              <button
+                className="icon-button"
+                type="button"
+                onClick={clearSelection}
+                disabled={batchDownloading}
+                title="清除選取"
+                aria-label="清除選取"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+              <button
+                className="primary-action batch-download-button"
+                type="button"
+                onClick={() => void handleBatchDownload()}
+                disabled={batchDownloading}
+              >
+                <Download size={18} aria-hidden="true" />
+                {batchDownloading ? "準備下載中" : `下載所選 (${selectedKeys.size})`}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="file-table" role="table" aria-label="檔案列表">
           <div className="table-header" role="row">
-            <span role="columnheader">名稱</span>
-            <span role="columnheader">大小</span>
-            <span role="columnheader">修改時間</span>
-            <span role="columnheader">操作</span>
+            <span className="selection-cell" role="columnheader">
+              <SelectAllCheckbox
+                checked={allDisplayedSelected}
+                indeterminate={selectedDisplayedCount > 0 && !allDisplayedSelected}
+                disabled={loading || batchDownloading || displayedKeys.length === 0}
+                onChange={toggleDisplayedFiles}
+              />
+            </span>
+            <span className="name-cell" role="columnheader">名稱</span>
+            <span className="size-cell" role="columnheader">大小</span>
+            <span className="modified-cell" role="columnheader">修改時間</span>
+            <span className="action-cell" role="columnheader">操作</span>
           </div>
 
           {loading ? <div className="empty-state">載入檔案中</div> : null}
@@ -180,7 +327,12 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
 
           {!loading
             ? filteredFolders.map((folder) => (
-                <FolderRow key={folder.prefix} folder={folder} onOpen={() => setPrefix(folder.prefix)} />
+                <FolderRow
+                  key={folder.prefix}
+                  folder={folder}
+                  disabled={batchDownloading}
+                  onOpen={() => setPrefix(folder.prefix)}
+                />
               ))
             : null}
 
@@ -190,6 +342,9 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
                   key={file.key}
                   file={file}
                   busy={downloadingKey === file.key}
+                  batchBusy={batchDownloading}
+                  selected={selectedKeys.has(file.key)}
+                  onToggle={() => toggleFileSelection(file.key)}
                   onDownload={() => void handleDownload(file)}
                 />
               ))
@@ -211,16 +366,31 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
   );
 }
 
-function FolderRow({ folder, onOpen }: { folder: FolderItem; onOpen(): void }) {
+function FolderRow({
+  folder,
+  disabled,
+  onOpen
+}: {
+  folder: FolderItem;
+  disabled: boolean;
+  onOpen(): void;
+}) {
   return (
-    <button className="table-row folder-row" type="button" onClick={onOpen} role="row">
+    <button
+      className="table-row folder-row"
+      type="button"
+      onClick={onOpen}
+      disabled={disabled}
+      role="row"
+    >
+      <span className="selection-cell" role="cell" aria-hidden="true" />
       <span className="name-cell" role="cell">
         <Folder size={20} aria-hidden="true" />
         {folder.name}
       </span>
-      <span role="cell">-</span>
-      <span role="cell">-</span>
-      <span role="cell">開啟</span>
+      <span className="size-cell" role="cell">-</span>
+      <span className="modified-cell" role="cell">-</span>
+      <span className="action-cell" role="cell">開啟</span>
     </button>
   );
 }
@@ -228,21 +398,36 @@ function FolderRow({ folder, onOpen }: { folder: FolderItem; onOpen(): void }) {
 function FileRow({
   file,
   busy,
+  batchBusy,
+  selected,
+  onToggle,
   onDownload
 }: {
   file: FileItem;
   busy: boolean;
+  batchBusy: boolean;
+  selected: boolean;
+  onToggle(): void;
   onDownload(): void;
 }) {
   return (
     <div className="table-row" role="row">
+      <span className="selection-cell" role="cell">
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={batchBusy}
+          onChange={onToggle}
+          aria-label={`選取 ${file.name}`}
+        />
+      </span>
       <span className="name-cell" role="cell">
         <File size={20} aria-hidden="true" />
         {file.name}
       </span>
-      <span role="cell">{formatBytes(file.size)}</span>
-      <span role="cell">{formatDate(file.lastModified)}</span>
-      <span role="cell">
+      <span className="size-cell" role="cell">{formatBytes(file.size)}</span>
+      <span className="modified-cell" role="cell">{formatDate(file.lastModified)}</span>
+      <span className="action-cell" role="cell">
         <button
           className="icon-button"
           type="button"
@@ -255,6 +440,37 @@ function FileRow({
         </button>
       </span>
     </div>
+  );
+}
+
+function SelectAllCheckbox({
+  checked,
+  indeterminate,
+  disabled,
+  onChange
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  disabled: boolean;
+  onChange(): void;
+}) {
+  const checkboxRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = indeterminate;
+    }
+  }, [indeterminate]);
+
+  return (
+    <input
+      ref={checkboxRef}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      onChange={onChange}
+      aria-label="選取目前顯示的所有檔案"
+    />
   );
 }
 
