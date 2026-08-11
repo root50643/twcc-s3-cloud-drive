@@ -4,12 +4,11 @@ import {
   Download,
   File,
   Folder,
-  LogOut,
   RefreshCw,
   Search,
   X
 } from "lucide-react";
-import { createBatchDownloadUrls, createDownloadUrl, listObjects, logout } from "./api";
+import { createBatchDownloadUrls, createDownloadUrl, listObjects } from "./api";
 import { triggerBrowserDownloads } from "./downloads";
 import {
   buildBreadcrumb,
@@ -18,16 +17,11 @@ import {
   formatDate,
   sortByLastModifiedDesc
 } from "./format";
-import type { FileItem, FolderItem, ObjectListResponse, User } from "./types";
-
-interface DriveViewProps {
-  user: User;
-  onLogout(): void;
-}
+import type { FileItem, FolderItem, ObjectListResponse } from "./types";
 
 export const MAX_BATCH_DOWNLOAD_FILES = 20;
 
-export function DriveView({ user, onLogout }: DriveViewProps) {
+export function DriveView() {
   const [prefix, setPrefix] = useState("");
   const [query, setQuery] = useState("");
   const [data, setData] = useState<ObjectListResponse | null>(null);
@@ -95,11 +89,6 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
   );
   const allDisplayedSelected =
     displayedKeys.length > 0 && selectedDisplayedCount === displayedKeys.length;
-
-  async function handleLogout() {
-    await logout();
-    onLogout();
-  }
 
   async function handleDownload(file: FileItem) {
     setDownloadingKey(file.key);
@@ -202,21 +191,7 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
   const normalizedParentPrefix = parentPrefix ? `${parentPrefix}/` : "";
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">S3-compatible storage</p>
-          <h1>TWCC S3 Cloud Drive</h1>
-        </div>
-        <div className="user-tools">
-          <span>{user.username}</span>
-          <button className="icon-button text-button" type="button" onClick={handleLogout}>
-            <LogOut size={18} aria-hidden="true" />
-            登出
-          </button>
-        </div>
-      </header>
-
+    <div className="drive-view">
       <section className="drive-toolbar" aria-label="Folder controls">
         <div className="breadcrumb" aria-label="Breadcrumb">
           {crumbs.map((crumb, index) => (
@@ -362,7 +337,7 @@ export function DriveView({ user, onLogout }: DriveViewProps) {
           </button>
         ) : null}
       </section>
-    </main>
+    </div>
   );
 }
 

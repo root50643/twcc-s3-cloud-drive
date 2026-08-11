@@ -4,7 +4,7 @@
 **/*.tsbuildinfo
 .env
 .env.*
-users.json
+data
 .git
 .agents
 .codex

@@ -5,7 +5,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { AppConfig } from "../config/env.js";
-import type { FileItem, FolderItem, ObjectListResult, StorageClient } from "../types.js";
+import type { FileItem, FolderItem, ObjectListResult, StorageAdminClient } from "../types.js";
 
 function basenameFromKey(key: string): string {
   const trimmed = key.endsWith("/") ? key.slice(0, -1) : key;
@@ -27,7 +27,7 @@ export function normalizeObjectKey(key: string): string {
   return key.replace(/^\/+/, "").replace(/\\/g, "/");
 }
 
-export class S3Storage implements StorageClient {
+export class S3Storage implements StorageAdminClient {
   private readonly client: S3Client;
   private readonly bucket: string;
 
@@ -110,6 +110,23 @@ export class S3Storage implements StorageClient {
     } catch (error) {
       console.error("Failed to create S3 download URL", summarizeAwsError(error));
       throw new Error("S3_DOWNLOAD_URL_FAILED");
+    }
+  }
+
+  async prefixExists(inputPrefix: string): Promise<boolean> {
+    const prefix = normalizePrefix(inputPrefix);
+    try {
+      const response = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          MaxKeys: 1
+        })
+      );
+      return prefix === "" || (response.KeyCount ?? response.Contents?.length ?? 0) > 0;
+    } catch (error) {
+      console.error("Failed to validate S3 prefix", summarizeAwsError(error));
+      throw new Error("S3_PATH_CHECK_FAILED");
     }
   }
 }

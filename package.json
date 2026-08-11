@@ -9,6 +9,6 @@
     "typecheck": "pnpm -r typecheck",
     "dev:backend": "pnpm --filter @twcc-s3/backend dev",
     "dev:frontend": "pnpm --filter @twcc-s3/frontend dev",
-    "user:add": "pnpm --filter @twcc-s3/backend user:add"
+    "db:init": "pnpm --filter @twcc-s3/backend db:init"
   }
 }

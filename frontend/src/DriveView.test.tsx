@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { triggerBrowserDownloads } from "./downloads";
 import { DriveView } from "./DriveView";
+import { clearApiSessionState } from "./api";
 
 vi.mock("./downloads", () => ({
   triggerBrowserDownloads: vi.fn()
@@ -31,6 +32,7 @@ function listResponse(
 }
 
 beforeEach(() => {
+  clearApiSessionState();
   vi.stubGlobal("fetch", fetchMock);
   triggerDownloadsMock.mockResolvedValue(undefined);
 });
@@ -51,6 +53,7 @@ describe("DriveView batch downloads", () => {
           file("new.txt", "2026-07-14T00:00:00.000Z")
         ])
       )
+      .mockResolvedValueOnce(jsonResponse({ csrfToken: "csrf-test" }))
       .mockResolvedValueOnce(
         jsonResponse({
           downloads: [
@@ -61,13 +64,13 @@ describe("DriveView batch downloads", () => {
         })
       );
 
-    render(<DriveView user={{ username: "alice" }} onLogout={vi.fn()} />);
+    render(<DriveView />);
     fireEvent.click(await screen.findByLabelText("選取 old.txt"));
     fireEvent.click(screen.getByLabelText("選取 new.txt"));
     fireEvent.click(screen.getByRole("button", { name: "下載所選 (2)" }));
 
     await waitFor(() => expect(triggerDownloadsMock).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
       keys: ["new.txt", "old.txt"]
     });
     expect(triggerDownloadsMock).toHaveBeenCalledWith([
@@ -83,7 +86,7 @@ describe("DriveView batch downloads", () => {
       listResponse([file("report.pdf"), file("photo.png"), file("notes.pdf")])
     );
 
-    render(<DriveView user={{ username: "alice" }} onLogout={vi.fn()} />);
+    render(<DriveView />);
     await screen.findByText("report.pdf");
     fireEvent.change(screen.getByLabelText("搜尋目前資料夾"), { target: { value: ".pdf" } });
     fireEvent.click(screen.getByLabelText("選取目前顯示的所有檔案"));
@@ -99,7 +102,7 @@ describe("DriveView batch downloads", () => {
       listResponse(Array.from({ length: 22 }, (_, index) => file(`file-${index}.txt`)))
     );
 
-    render(<DriveView user={{ username: "alice" }} onLogout={vi.fn()} />);
+    render(<DriveView />);
     await screen.findByText("file-0.txt");
     fireEvent.click(screen.getByLabelText("選取目前顯示的所有檔案"));
 
@@ -115,6 +118,7 @@ describe("DriveView batch downloads", () => {
   it("keeps the selection when the batch API fails", async () => {
     fetchMock
       .mockResolvedValueOnce(listResponse([file("retry.txt")]))
+      .mockResolvedValueOnce(jsonResponse({ csrfToken: "csrf-test" }))
       .mockResolvedValueOnce(
         jsonResponse(
           { error: { code: "S3_DOWNLOAD_URL_FAILED", message: "Unable to create download URLs." } },
@@ -122,7 +126,7 @@ describe("DriveView batch downloads", () => {
         )
       );
 
-    render(<DriveView user={{ username: "alice" }} onLogout={vi.fn()} />);
+    render(<DriveView />);
     fireEvent.click(await screen.findByLabelText("選取 retry.txt"));
     fireEvent.click(screen.getByRole("button", { name: "下載所選 (1)" }));
 
@@ -139,7 +143,7 @@ describe("DriveView batch downloads", () => {
       .mockResolvedValueOnce(listResponse(rootFiles, folders))
       .mockResolvedValueOnce(listResponse([], [], "reports/"));
 
-    render(<DriveView user={{ username: "alice" }} onLogout={vi.fn()} />);
+    render(<DriveView />);
     fireEvent.click(await screen.findByLabelText("選取 root.txt"));
     expect(screen.queryByLabelText("選取 reports")).not.toBeInTheDocument();
 

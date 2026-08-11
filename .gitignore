@@ -10,7 +10,7 @@ coverage/
 .env
 .env.*
 !.env.example
-users.json
+data/
 
 # Logs
 *.log

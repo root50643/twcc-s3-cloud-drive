@@ -1,10 +1,10 @@
-export interface AppUser {
-  username: string;
-}
+export type UserRole = "admin" | "user";
 
-export interface StoredUser {
+export interface AppUser {
+  id: number;
   username: string;
-  passwordHash: string;
+  role: UserRole;
+  s3Prefix: string;
 }
 
 export interface FolderItem {
@@ -35,4 +35,8 @@ export interface StorageClient {
     key: string;
     expiresInSeconds: number;
   }): Promise<string>;
+}
+
+export interface StorageAdminClient extends StorageClient {
+  prefixExists(prefix: string): Promise<boolean>;
 }

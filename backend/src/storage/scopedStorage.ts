@@ -51,13 +51,19 @@ export class ScopedStorage implements StorageClient {
     key: string;
     expiresInSeconds: number;
   }): Promise<string> {
-    const relativeKey = normalizeObjectKey(input.key);
-    assertSafeSegments(relativeKey);
-
     return this.storage.createDownloadUrl({
-      key: `${this.rootPrefix}${relativeKey}`,
+      key: this.resolveObjectKey(input.key),
       expiresInSeconds: input.expiresInSeconds
     });
+  }
+
+  resolveObjectKey(key: string): string {
+    const relativeKey = normalizeObjectKey(key);
+    if (!relativeKey) {
+      throw new Error("INVALID_SCOPED_PATH");
+    }
+    assertSafeSegments(relativeKey);
+    return `${this.rootPrefix}${relativeKey}`;
   }
 
   private stripRoot(value: string): string {

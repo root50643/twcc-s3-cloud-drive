@@ -1,5 +1,13 @@
 export interface User {
+  id: number;
   username: string;
+  role: "admin" | "user";
+  s3Prefix: string;
+}
+
+export interface AdminUser extends User {
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface FolderItem {
@@ -36,4 +44,35 @@ export interface ApiErrorBody {
     code: string;
     message: string;
   };
+}
+
+export interface AuditPage<T> {
+  items: T[];
+  nextCursor: string | null;
+}
+
+export interface LoginAuditItem {
+  id: number;
+  username: string;
+  success: boolean;
+  outcome: "success" | "failure" | "rate_limited";
+  ipAddress: string;
+  createdAt: string;
+}
+
+export interface DownloadAuditItem {
+  id: number;
+  username: string;
+  objectKey: string;
+  createdAt: string;
+}
+
+export interface AdminAuditItem {
+  id: number;
+  actorUsername: string;
+  action: string;
+  targetUsername: string | null;
+  details: Record<string, unknown> | null;
+  ipAddress: string;
+  createdAt: string;
 }
