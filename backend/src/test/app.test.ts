@@ -196,8 +196,8 @@ describe("scoped objects and download audit", () => {
 });
 
 describe("administrator APIs", () => {
-  it("blocks regular users and lets admins create a validated scoped account", async () => {
-    const { app, storage } = await createTestContext();
+  it("blocks regular users and lets admins create and edit a noted scoped account", async () => {
+    const { app, storage, database } = await createTestContext();
     const bob = request.agent(app);
     await login(bob, "bob", "password-two");
     expect((await bob.get("/api/v1/admin/users")).status).toBe(403);
@@ -206,10 +206,20 @@ describe("administrator APIs", () => {
     const token = await login(admin, "alice", "password-one");
     const created = await admin.post("/api/v1/admin/users").set("X-CSRF-Token", token).send({ username: "carol", password: "", role: "user", s3Prefix: "clients/carol/" });
     expect(created.status).toBe(400);
-    const valid = await admin.post("/api/v1/admin/users").set("X-CSRF-Token", token).send({ username: "carol", password: "pass", role: "user", s3Prefix: "/clients/carol" });
+    const valid = await admin.post("/api/v1/admin/users").set("X-CSRF-Token", token).send({ username: "carol", password: "pass", role: "user", s3Prefix: "/clients/carol", note: "Finance contact\nWeekdays only" });
     expect(valid.status).toBe(201);
     expect(valid.body.user.s3Prefix).toBe("clients/carol/");
+    expect(valid.body.user.note).toBe("Finance contact\nWeekdays only");
     expect(storage.prefixesChecked).toContain("clients/carol/");
+
+    const updated = await admin.patch(`/api/v1/admin/users/${valid.body.user.id}`).set("X-CSRF-Token", token).send({
+      role: "user",
+      s3Prefix: "clients/carol/",
+      note: "Primary finance contact"
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body.user.note).toBe("Primary finance contact");
+    expect(database.getUserByUsername("carol")?.note).toBe("Primary finance contact");
   });
 
   it("rejects missing paths for users and nonexistent prefixes", async () => {

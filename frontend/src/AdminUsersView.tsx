@@ -44,7 +44,7 @@ export function AdminUsersView({ currentUser, onSessionEnded }: { currentUser: U
   }
 
   async function handleEdit(target: AdminUser, input: AccountInput) {
-    const result = await updateUser(target.id, { role: input.role, s3Prefix: input.s3Prefix });
+    const result = await updateUser(target.id, { role: input.role, s3Prefix: input.s3Prefix, note: input.note });
     setDialog(null);
     if (result.signedOut) { onSessionEnded(); return; }
     setStatus(`已更新帳號 ${target.username}。`);
@@ -78,10 +78,10 @@ export function AdminUsersView({ currentUser, onSessionEnded }: { currentUser: U
       {status ? <div className="status-success inline-status" role="status">{status}</div> : null}
       <div className="admin-table-wrap">
         <table className="admin-table">
-          <thead><tr><th>帳號</th><th>角色</th><th>S3 路徑</th><th>建立時間</th><th>操作</th></tr></thead>
+          <thead><tr><th>帳號</th><th>角色</th><th>S3 路徑</th><th>備註</th><th>建立時間</th><th>操作</th></tr></thead>
           <tbody>
-            {loading ? <tr><td colSpan={5} className="table-message">載入中</td></tr> : null}
-            {!loading && users.length === 0 ? <tr><td colSpan={5} className="table-message">尚無帳號</td></tr> : null}
+            {loading ? <tr><td colSpan={6} className="table-message">載入中</td></tr> : null}
+            {!loading && users.length === 0 ? <tr><td colSpan={6} className="table-message">尚無帳號</td></tr> : null}
             {!loading ? users.map((user) => {
               const finalAdmin = user.role === "admin" && adminCount === 1;
               return (
@@ -89,6 +89,7 @@ export function AdminUsersView({ currentUser, onSessionEnded }: { currentUser: U
                   <td data-label="帳號"><strong>{user.username}</strong>{user.id === currentUser.id ? <span className="self-label">目前帳號</span> : null}</td>
                   <td data-label="角色"><span className={`role-badge ${user.role}`}>{user.role === "admin" ? "管理員" : "使用者"}</span></td>
                   <td data-label="S3 路徑" className="path-value">{user.s3Prefix || "整個 bucket"}</td>
+                  <td data-label="備註" className="account-note">{user.note || "-"}</td>
                   <td data-label="建立時間">{formatTimestamp(user.createdAt)}</td>
                   <td data-label="操作"><div className="row-actions">
                     <button className="icon-button" type="button" onClick={() => setDialog({ type: "edit", user })} title="編輯" aria-label={`編輯 ${user.username}`}><Pencil size={17} /></button>
@@ -110,7 +111,7 @@ export function AdminUsersView({ currentUser, onSessionEnded }: { currentUser: U
   );
 }
 
-interface AccountInput { username: string; password: string; role: User["role"]; s3Prefix: string; }
+interface AccountInput { username: string; password: string; role: User["role"]; s3Prefix: string; note: string; }
 
 function AccountDialog({ mode, user, canDemote = true, onClose, onSubmit }: {
   mode: "create" | "edit";
@@ -124,6 +125,7 @@ function AccountDialog({ mode, user, canDemote = true, onClose, onSubmit }: {
   const [confirmation, setConfirmation] = useState("");
   const [role, setRole] = useState<User["role"]>(user?.role ?? "user");
   const [s3Prefix, setS3Prefix] = useState(user?.s3Prefix ?? "uploads/");
+  const [note, setNote] = useState(user?.note ?? "");
   const [validation, setValidation] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -146,7 +148,7 @@ function AccountDialog({ mode, user, canDemote = true, onClose, onSubmit }: {
     if (mode === "create" && password !== confirmation) { setError("兩次輸入的密碼不一致。"); return; }
     if (role === "user" && s3Prefix.trim() === "") { setError("一般使用者必須設定 S3 路徑。"); return; }
     setBusy(true);
-    try { await onSubmit({ username, password, role, s3Prefix }); }
+    try { await onSubmit({ username, password, role, s3Prefix, note }); }
     catch (requestError) { setError(messageOf(requestError)); }
     finally { setBusy(false); }
   }
@@ -164,6 +166,7 @@ function AccountDialog({ mode, user, canDemote = true, onClose, onSubmit }: {
           <option value="user" disabled={!canDemote}>使用者</option>
         </select></label>
         <label>S3 路徑<div className="path-input-row"><input value={s3Prefix} onChange={(event) => { setS3Prefix(event.target.value); setValidation(""); }} placeholder={role === "admin" ? "空白代表整個 bucket" : "uploads/"} /><button className="icon-button" type="button" onClick={() => void checkPath()} title="驗證路徑" aria-label="驗證路徑"><ShieldCheck size={18} /></button></div></label>
+        <label>備註（選填）<textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={1_000} rows={4} /></label>
         {validation ? <div className="validation-success"><CheckCircle2 size={17} />{validation}</div> : null}
         {error ? <div className="form-error">{error}</div> : null}
         <div className="form-actions"><button className="secondary-action" type="button" onClick={onClose}>取消</button><button className="primary-action text-button" type="submit" disabled={busy}><Save size={17} />{busy ? "儲存中" : "儲存"}</button></div>

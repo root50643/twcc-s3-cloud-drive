@@ -79,15 +79,22 @@ POST   /admin/s3-paths/validate
   "username": "bob",
   "password": "example-password",
   "role": "user",
-  "s3Prefix": "uploads/bob/"
+  "s3Prefix": "uploads/bob/",
+  "note": "Finance team contact"
 }
 ```
 
-更新權限：
+更新權限與備註：
 
 ```json
-{ "role": "user", "s3Prefix": "uploads/bob/" }
+{
+  "role": "user",
+  "s3Prefix": "uploads/bob/",
+  "note": "Primary finance team contact"
+}
 ```
+
+`note` 可為空字串，最多 1,000 字元。只有管理員帳號 API 會回傳備註；一般登入狀態與檔案 API 不會回傳。
 
 重設密碼：`{ "password": "new-example" }`。
 

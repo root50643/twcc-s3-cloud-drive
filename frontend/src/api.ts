@@ -141,12 +141,12 @@ export async function listUsers(): Promise<AdminUser[]> {
   return (await parseResponse<{ users: AdminUser[] }>(await apiFetch("/api/v1/admin/users"))).users;
 }
 
-export async function createUser(input: { username: string; password: string; role: User["role"]; s3Prefix: string }): Promise<AdminUser> {
+export async function createUser(input: { username: string; password: string; role: User["role"]; s3Prefix: string; note: string }): Promise<AdminUser> {
   const response = await apiFetch("/api/v1/admin/users", { method: "POST", ...jsonBody(input) });
   return (await parseResponse<{ user: AdminUser }>(response)).user;
 }
 
-export async function updateUser(id: number, input: { role: User["role"]; s3Prefix: string }): Promise<{ user: AdminUser; signedOut: boolean }> {
+export async function updateUser(id: number, input: { role: User["role"]; s3Prefix: string; note: string }): Promise<{ user: AdminUser; signedOut: boolean }> {
   return parseResponse(await apiFetch(`/api/v1/admin/users/${id}`, { method: "PATCH", ...jsonBody(input) }));
 }
 

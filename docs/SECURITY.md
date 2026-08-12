@@ -21,6 +21,8 @@
 
 Frontend 隱藏管理功能只改善使用體驗，不是安全邊界。Backend 每次請求都查詢目前使用者並驗證角色；所有 S3 key 都在 backend 套用 prefix，拒絕 `.`、`..` 與 scope 外路徑。
 
+帳號備註只由管理員端點回傳，不包含在一般使用者的 Session 或登入狀態 response。管理稽核只記錄備註是否變更，不保存備註正文。
+
 最後管理員的刪除與降級檢查在 SQLite `BEGIN IMMEDIATE` 交易內執行，避免同時操作造成零管理員狀態。
 
 ## Secrets

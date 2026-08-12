@@ -22,7 +22,7 @@ flowchart LR
 | Table | Purpose |
 | --- | --- |
 | `schema_migrations` | 已套用的 schema version |
-| `users` | username、Argon2id PHC、role、S3 prefix |
+| `users` | username、Argon2id PHC、role、S3 prefix、管理備註 |
 | `sessions` | server-side Session JSON、期限、user ID |
 | `login_events` | 成功、失敗與限流登入 |
 | `download_events` | 已簽發的 object download URL |
@@ -42,6 +42,9 @@ flowchart LR
 ## Migrations
 
 Backend 啟動及 `db:init` 都會執行相同 migration runner。每個 migration 在 `BEGIN IMMEDIATE` 交易內完成，成功後寫入 `schema_migrations`。新版本只能新增下一個 version，不應修改已發布 migration。
+
+- Version 1：帳號、Session 與三類稽核資料表。
+- Version 2：為帳號新增 `note` 欄位；既有帳號以空字串初始化。
 
 ## Extension Points
 

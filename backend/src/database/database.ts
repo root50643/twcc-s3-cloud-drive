@@ -6,6 +6,7 @@ import type { AppUser, UserRole } from "../types.js";
 
 export interface UserRecord extends AppUser {
   passwordHash: string;
+  note: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -24,6 +25,7 @@ interface UserRow {
   password_hash: string;
   role: UserRole;
   s3_prefix: string;
+  note: string;
   created_at: string;
   updated_at: string;
 }
@@ -88,12 +90,9 @@ export class AppDatabase {
       );
     `);
     const version = (this.db.prepare("SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations").get() as { version: number }).version;
-    if (version >= 1) {
-      return;
-    }
-
-    this.transaction(() => {
-      this.db.exec(`
+    if (version < 1) {
+      this.transaction(() => {
+        this.db.exec(`
         CREATE TABLE users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           username TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -147,9 +146,17 @@ export class AppDatabase {
         );
         CREATE INDEX admin_events_created_idx ON admin_events(id DESC);
         CREATE INDEX admin_events_actor_idx ON admin_events(actor_username, id DESC);
-      `);
-      this.db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(1, nowIso());
-    });
+        `);
+        this.db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(1, nowIso());
+      });
+    }
+
+    if (version < 2) {
+      this.transaction(() => {
+        this.db.exec("ALTER TABLE users ADD COLUMN note TEXT NOT NULL DEFAULT ''");
+        this.db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(2, nowIso());
+      });
+    }
   }
 
   transaction<T>(operation: () => T): T {
@@ -184,13 +191,13 @@ export class AppDatabase {
     return (this.db.prepare("SELECT * FROM users ORDER BY username COLLATE NOCASE").all() as unknown as UserRow[]).map((row) => mapUser(row)!);
   }
 
-  createUser(input: { username: string; passwordHash: string; role: UserRole; s3Prefix: string }): UserRecord {
+  createUser(input: { username: string; passwordHash: string; role: UserRole; s3Prefix: string; note?: string }): UserRecord {
     const timestamp = nowIso();
     try {
       const result = this.db.prepare(`
-        INSERT INTO users(username, password_hash, role, s3_prefix, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(input.username, input.passwordHash, input.role, input.s3Prefix, timestamp, timestamp);
+        INSERT INTO users(username, password_hash, role, s3_prefix, note, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(input.username, input.passwordHash, input.role, input.s3Prefix, input.note ?? "", timestamp, timestamp);
       return this.getUserById(Number(result.lastInsertRowid))!;
     } catch (error) {
       if (String(error).includes("UNIQUE constraint failed")) {
@@ -200,7 +207,7 @@ export class AppDatabase {
     }
   }
 
-  updateUserAccess(id: number, role: UserRole, s3Prefix: string): { user: UserRecord; roleChanged: boolean } {
+  updateUserAccess(id: number, role: UserRole, s3Prefix: string, note: string): { user: UserRecord; roleChanged: boolean } {
     return this.transaction(() => {
       const current = this.getUserById(id);
       if (!current) {
@@ -209,8 +216,8 @@ export class AppDatabase {
       if (current.role === "admin" && role !== "admin" && this.countAdmins() === 1) {
         throw new DatabaseDomainError("LAST_ADMIN");
       }
-      this.db.prepare("UPDATE users SET role = ?, s3_prefix = ?, updated_at = ? WHERE id = ?")
-        .run(role, s3Prefix, nowIso(), id);
+      this.db.prepare("UPDATE users SET role = ?, s3_prefix = ?, note = ?, updated_at = ? WHERE id = ?")
+        .run(role, s3Prefix, note, nowIso(), id);
       return { user: this.getUserById(id)!, roleChanged: current.role !== role };
     });
   }
@@ -386,6 +393,7 @@ function mapUser(row: UserRow | undefined): UserRecord | null {
     passwordHash: row.password_hash,
     role: row.role,
     s3Prefix: row.s3_prefix,
+    note: row.note,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

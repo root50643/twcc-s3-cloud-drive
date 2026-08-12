@@ -17,14 +17,16 @@ const usernameSchema = z.string().trim().min(1).max(128).refine(
 );
 const passwordSchema = z.string().min(1);
 const roleSchema = z.enum(["admin", "user"]);
+const noteSchema = z.string().max(1_000);
 
 const createUserSchema = z.object({
   username: usernameSchema,
   password: passwordSchema,
   role: roleSchema,
-  s3Prefix: z.string()
+  s3Prefix: z.string(),
+  note: noteSchema.default("")
 });
-const updateUserSchema = z.object({ role: roleSchema, s3Prefix: z.string() });
+const updateUserSchema = z.object({ role: roleSchema, s3Prefix: z.string(), note: noteSchema.optional() });
 const resetPasswordSchema = z.object({ password: passwordSchema });
 const validatePathSchema = z.object({ s3Prefix: z.string() });
 const auditQuerySchema = z.object({
@@ -59,13 +61,14 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
         username: body.data.username,
         passwordHash,
         role: body.data.role,
-        s3Prefix
+        s3Prefix,
+        note: body.data.note
       });
       options.database.recordAdminEvent({
         actor: currentUser(res),
         action: "user.created",
         targetUsername: user.username,
-        details: { role: user.role, s3Prefix: user.s3Prefix },
+        details: { role: user.role, s3Prefix: user.s3Prefix, hasNote: user.note.length > 0 },
         ipAddress: requestIp(req.ip)
       });
       res.status(201).json({ user: publicUser(user) });
@@ -82,7 +85,8 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       const existing = options.database.getUserById(id);
       if (!existing) throw new DatabaseDomainError("USER_NOT_FOUND");
       const s3Prefix = await validatedPrefix(options.storage, body.data.role, body.data.s3Prefix);
-      const result = options.database.updateUserAccess(id, body.data.role, s3Prefix);
+      const note = body.data.note ?? existing.note;
+      const result = options.database.updateUserAccess(id, body.data.role, s3Prefix, note);
       if (result.roleChanged) options.database.deleteSessionsForUser(id);
       options.database.recordAdminEvent({
         actor: currentUser(res),
@@ -92,7 +96,8 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
           previousRole: existing.role,
           role: result.user.role,
           previousS3Prefix: existing.s3Prefix,
-          s3Prefix: result.user.s3Prefix
+          s3Prefix: result.user.s3Prefix,
+          noteChanged: existing.note !== result.user.note
         },
         ipAddress: requestIp(req.ip)
       });
@@ -141,7 +146,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
         actor,
         action: "user.deleted",
         targetUsername: deleted.username,
-        details: { role: deleted.role, s3Prefix: deleted.s3Prefix },
+        details: { role: deleted.role, s3Prefix: deleted.s3Prefix, hadNote: deleted.note.length > 0 },
         ipAddress: requestIp(req.ip)
       });
       const signedOut = id === actor.id;
@@ -211,6 +216,7 @@ function publicUser(user: UserRecord) {
     username: user.username,
     role: user.role,
     s3Prefix: user.s3Prefix,
+    note: user.note,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };

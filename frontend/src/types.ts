@@ -6,6 +6,7 @@ export interface User {
 }
 
 export interface AdminUser extends User {
+  note: string;
   createdAt: string;
   updatedAt: string;
 }

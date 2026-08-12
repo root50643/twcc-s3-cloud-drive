@@ -14,10 +14,32 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); fetchMock.mockReset(); });
 
 describe("management views", () => {
   it("shows account roles and protects the only administrator delete action", async () => {
-    fetchMock.mockResolvedValueOnce(json({ users: [{ id: 1, username: "alice", role: "admin", s3Prefix: "", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" }] }));
+    fetchMock.mockResolvedValueOnce(json({ users: [{ id: 1, username: "alice", role: "admin", s3Prefix: "", note: "System owner", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" }] }));
     render(<AdminUsersView currentUser={{ id: 1, username: "alice", role: "admin", s3Prefix: "" }} onSessionEnded={vi.fn()} />);
     expect(await screen.findByText("整個 bucket")).toBeInTheDocument();
+    expect(screen.getByText("System owner")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刪除 alice" })).toBeDisabled();
+  });
+
+  it("prefills and updates an account note", async () => {
+    const original = { id: 1, username: "alice", role: "admin", s3Prefix: "", note: "System owner", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" };
+    const updated = { ...original, note: "Infrastructure owner" };
+    fetchMock
+      .mockResolvedValueOnce(json({ users: [original] }))
+      .mockResolvedValueOnce(json({ csrfToken: "csrf-test" }))
+      .mockResolvedValueOnce(json({ user: updated, signedOut: false }))
+      .mockResolvedValueOnce(json({ users: [updated] }));
+
+    render(<AdminUsersView currentUser={{ id: 1, username: "alice", role: "admin", s3Prefix: "" }} onSessionEnded={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "編輯 alice" }));
+    const note = screen.getByLabelText("備註（選填）");
+    expect(note).toHaveValue("System owner");
+    fireEvent.change(note, { target: { value: "Infrastructure owner" } });
+    fireEvent.click(screen.getByRole("button", { name: "儲存" }));
+
+    await waitFor(() => expect(screen.getByText("Infrastructure owner")).toBeInTheDocument());
+    const request = fetchMock.mock.calls[2]?.[1] as RequestInit;
+    expect(JSON.parse(request.body as string)).toMatchObject({ note: "Infrastructure owner" });
   });
 
   it("changes the current password with CSRF and ends the session", async () => {
